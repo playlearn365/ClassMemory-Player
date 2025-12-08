@@ -1,483 +1,703 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Play, ChevronLeft, ChevronRight, X, Image as ImageIcon, Save, MonitorPlay } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>ClassMemory Player｜課堂照片格言播放器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 4px;
+      text-align: center;
+      color: #facc15;
+    }
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    @media (min-width: 768px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    .card {
+      background: #020617;
+      border-radius: 18px;
+      border: 1px solid #1e293b;
+      padding: 20px;
+      box-shadow: 0 20px 35px rgba(15,23,42,0.8);
+    }
+    .card h2 {
+      font-size: 18px;
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .small {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .upload-area {
+      position: relative;
+      border-radius: 14px;
+      border: 2px dashed #475569;
+      padding: 24px 12px;
+      text-align: center;
+      color: #cbd5f5;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .upload-area:hover {
+      background: rgba(30,64,175,0.15);
+      border-color: #38bdf8;
+    }
+    .upload-area input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .thumbs {
+      margin-top: 12px;
+      max-height: 190px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      padding-right: 4px;
+    }
+    .thumbs::-webkit-scrollbar { width: 6px; }
+    .thumbs::-webkit-scrollbar-track { background: #0f172a; }
+    .thumbs::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid transparent;
+    }
+    .thumb.has-quote {
+      border-color: #facc15;
+      box-shadow: 0 0 0 1px rgba(250,204,21,0.5);
+    }
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .thumb-index {
+      position: absolute;
+      left: 4px;
+      bottom: 4px;
+      background: rgba(0,0,0,0.7);
+      color: #f9fafb;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 999px;
+    }
+    .thumb button {
+      position: absolute;
+      right: 4px;
+      top: 4px;
+      border: none;
+      background: #ef4444;
+      color: white;
+      border-radius: 999px;
+      width: 18px;
+      height: 18px;
+      font-size: 11px;
+      cursor: pointer;
+      opacity: 0;
+      transition: 0.15s;
+    }
+    .thumb:hover button { opacity: 1; }
 
-export default function PhotoQuotePlayer() {
-  const [step, setStep] = useState('setup'); // setup, preview
-  const [photos, setPhotos] = useState([]);
-  const [quotes, setQuotes] = useState({
-    start: "好的開始是成功的一半",
-    middle: "休息是為了走更長遠的路",
-    end: "學而不思則罔，思而不學則殆"
-  });
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [slides, setSlides] = useState([]);
+    textarea {
+      width: 100%;
+      resize: vertical;
+      min-height: 48px;
+      max-height: 120px;
+      background: #020617;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      padding: 8px 10px;
+      color: #e5e7eb;
+      font-size: 14px;
+      outline: none;
+      transition: 0.2s;
+    }
+    textarea:focus {
+      border-color: #facc15;
+      box-shadow: 0 0 0 1px rgba(250,204,21,0.5);
+    }
+    label { font-size: 13px; color: #cbd5f5; display: block; margin-bottom: 4px; }
 
-  // 處理圖片上傳與轉 Base64 (為了打包下載功能)
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .btn {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: 0.18s;
+    }
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+      box-shadow: 0 10px 25px rgba(37,99,235,0.5);
+    }
+    .btn-primary:hover { background: #3b82f6; transform: translateY(-1px); }
+    .btn-green {
+      background: #059669;
+      color: white;
+      box-shadow: 0 10px 25px rgba(5,150,105,0.5);
+    }
+    .btn-green:hover { background: #10b981; transform: translateY(-1px); }
 
-    const newPhotos = [];
-    let processedCount = 0;
+    .hint {
+      margin-top: 4px;
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+    }
 
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        newPhotos.push({
-          id: Date.now() + Math.random(),
-          src: event.target.result,
-          name: file.name
-        });
-        processedCount++;
-        if (processedCount === files.length) {
-          setPhotos(prev => [...prev, ...newPhotos]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+    /* 播放器覆蓋層 */
+    #playerView {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: white;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      flex-direction: column;
+    }
+    #playerView.show { display: flex; }
+    #playerImageWrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: 1120px;
+      max-height: 90vh;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #playerImage {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 18px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.9);
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    .quote-layer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 88px;
+      background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.4), transparent);
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    .quote-box {
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 18px 28px;
+      border-radius: 20px;
+      border: 1px solid rgba(248,250,252,0.2);
+      max-width: 80%;
+      text-align: center;
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .quote-box h1 {
+      margin: 0;
+      font-size: 22px;
+      color: #facc15;
+      text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
+    }
+    @media (min-width: 768px) {
+      .quote-box h1 { font-size: 30px; }
+    }
 
-  const removePhoto = (id) => {
-    setPhotos(photos.filter(p => p.id !== id));
-  };
+    #progressBar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 4px;
+      background: #facc15;
+      width: 0%;
+      transition: width 0.4s;
+    }
 
-  // 生成播放序列 (修改為：每張都是照片，但在特定索引加上 overlayQuote 屬性)
-  const generateSlides = () => {
-    if (photos.length === 0) return [];
-    
-    return photos.map((photo, index) => {
-        let overlayQuote = null;
-        // Index 0 = 第 1 張
-        if (index === 0) overlayQuote = quotes.start;
-        // Index 4 = 第 5 張
-        if (index === 4) overlayQuote = quotes.middle;
-        // Index 9 = 第 10 張
-        if (index === 9) overlayQuote = quotes.end;
+    .player-controls {
+      position: absolute;
+      bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(15,23,42,0.9);
+      padding: 8px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      backdrop-filter: blur(10px);
+    }
+    .player-btn {
+      border: none;
+      background: none;
+      color: #e5e7eb;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 18px;
+      transition: 0.16s;
+    }
+    .player-btn:hover { color: #facc15; }
+    .player-main {
+      border-radius: 999px;
+      background: #facc15;
+      color: #111827;
+      padding: 8px 16px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(148,163,184,0.4);
+    }
+    .counter {
+      font-size: 12px;
+      color: #9ca3af;
+      min-width: 70px;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
 
-        return {
-            src: photo.src,
-            overlayQuote: overlayQuote
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page" id="setupView">
+    <h1>📸 ClassMemory Player</h1>
+    <p class="subtitle">上傳課堂照片，設定格言（會顯示在第 1、5、10 張照片上），即可播放或打包下載 HTML。</p>
+
+    <div class="grid">
+      <!-- 左：上傳區 -->
+      <div class="card">
+        <h2>1. 上傳照片（<span id="photoCount">0</span> 張）</h2>
+        <div class="upload-area">
+          點擊或拖拉照片至此（建議 10 張以上）
+          <input type="file" id="photoInput" accept="image/*" multiple />
+        </div>
+        <div id="thumbs" class="thumbs"></div>
+        <p class="small">＊有黃色框與 💬 標記的照片，播放時會顯示格言。</p>
+      </div>
+
+      <!-- 右：格言設定 -->
+      <div class="card">
+        <h2>2. 設定格言（疊加在照片上）</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <label>第 1 張照片格言</label>
+            <textarea id="quoteStart">好的開始是成功的一半</textarea>
+          </div>
+          <div>
+            <label>第 5 張照片格言</label>
+            <textarea id="quoteMiddle">休息是為了走更長遠的路</textarea>
+          </div>
+          <div>
+            <label>第 10 張照片格言</label>
+            <textarea id="quoteEnd">學而不思則罔，思而不學則殆</textarea>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="previewBtn">▶ 線上預覽播放</button>
+          <button class="btn btn-green" id="exportBtn">💾 打包下載 HTML</button>
+        </div>
+        <p class="hint">＊打包下載會產生一個獨立 HTML 檔，內含所有照片，可在無網路環境播放。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 播放器覆蓋層 -->
+  <div id="playerView">
+    <div id="progressBar"></div>
+    <div id="playerImageWrapper">
+      <img id="playerImage" src="" alt="slide" />
+      <div id="quoteLayer" class="quote-layer" style="display:none;">
+        <div class="quote-box">
+          <h1 id="quoteText"></h1>
+        </div>
+      </div>
+      <div class="player-controls">
+        <button class="player-btn" id="exitBtn" title="返回編輯">✕</button>
+        <div class="divider"></div>
+        <button class="player-btn" id="prevBtn">⟨</button>
+        <button class="player-btn player-main" id="playPauseBtn">暫停</button>
+        <button class="player-btn" id="nextBtn">⟩</button>
+        <div class="divider"></div>
+        <div class="counter" id="counterText">0 / 0</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --------- 狀態 ---------
+    const photos = []; // {id, src, name}
+    let slides = [];   // {src, overlayQuote}
+    let currentIndex = 0;
+    let isPlaying = false;
+    let timer = null;
+
+    const photoInput = document.getElementById('photoInput');
+    const thumbsEl = document.getElementById('thumbs');
+    const photoCountEl = document.getElementById('photoCount');
+
+    const quoteStartEl = document.getElementById('quoteStart');
+    const quoteMiddleEl = document.getElementById('quoteMiddle');
+    const quoteEndEl = document.getElementById('quoteEnd');
+
+    const previewBtn = document.getElementById('previewBtn');
+    const exportBtn = document.getElementById('exportBtn');
+
+    const playerView = document.getElementById('playerView');
+    const setupView = document.getElementById('setupView');
+    const playerImage = document.getElementById('playerImage');
+    const quoteLayer = document.getElementById('quoteLayer');
+    const quoteText = document.getElementById('quoteText');
+    const progressBar = document.getElementById('progressBar');
+    const counterText = document.getElementById('counterText');
+
+    const exitBtn = document.getElementById('exitBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+
+    // --------- 上傳照片 ---------
+    photoInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      let processed = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          photos.push({
+            id: Date.now() + Math.random(),
+            src: ev.target.result,
+            name: file.name
+          });
+          processed++;
+          if (processed === files.length) {
+            renderThumbs();
+          }
         };
+        reader.readAsDataURL(file);
+      });
+
+      photoInput.value = '';
     });
-  };
 
-  const handleStartPlay = () => {
-    if (photos.length === 0) {
-      alert("請至少上傳一張照片！");
-      return;
-    }
-    const generated = generateSlides();
-    setSlides(generated);
-    setCurrentSlideIndex(0);
-    setStep('player');
-    setIsPlaying(true);
-  };
+    function renderThumbs() {
+      photoCountEl.textContent = photos.length.toString();
+      thumbsEl.innerHTML = '';
+      photos.forEach((p, idx) => {
+        const hasQuote = idx === 0 || idx === 4 || idx === 9;
+        const div = document.createElement('div');
+        div.className = 'thumb' + (hasQuote ? ' has-quote' : '');
+        const img = document.createElement('img');
+        img.src = p.src;
+        div.appendChild(img);
 
-  // 播放器邏輯
-  useEffect(() => {
-    let interval;
-    if (isPlaying && step === 'player') {
-      interval = setInterval(() => {
-        setCurrentSlideIndex(prev => {
-          if (prev < slides.length - 1) return prev + 1;
-          setIsPlaying(false); // 播完停止
-          return prev;
+        const badge = document.createElement('span');
+        badge.className = 'thumb-index';
+        badge.textContent = (idx+1) + (hasQuote ? ' 💬' : '');
+        div.appendChild(badge);
+
+        const btn = document.createElement('button');
+        btn.textContent = '×';
+        btn.addEventListener('click', () => {
+          const i = photos.findIndex(ph => ph.id === p.id);
+          if (i >= 0) {
+            photos.splice(i, 1);
+            renderThumbs();
+          }
         });
-      }, 4000); // 每張 4 秒
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying, step, slides]);
-
-  // 打包下載功能 (生成獨立 HTML)
-  const handleExport = () => {
-    if (photos.length === 0) {
-      alert("沒有照片可以打包！");
-      return;
+        div.appendChild(btn);
+        thumbsEl.appendChild(div);
+      });
     }
 
-    const exportSlides = generateSlides();
-    
-    // 建立一個極簡的 HTML 模板 (更新 CSS 以支援疊加文字)
-    const htmlContent = `
+    // --------- 產生播放序列 ---------
+    function generateSlides() {
+      const qStart = quoteStartEl.value.trim();
+      const qMiddle = quoteMiddleEl.value.trim();
+      const qEnd = quoteEndEl.value.trim();
+
+      return photos.map((p, idx) => {
+        let overlayQuote = null;
+        if (idx === 0 && qStart) overlayQuote = qStart;
+        if (idx === 4 && qMiddle) overlayQuote = qMiddle;
+        if (idx === 9 && qEnd) overlayQuote = qEnd;
+        return { src: p.src, overlayQuote };
+      });
+    }
+
+    // --------- 播放器 ---------
+    function openPlayer() {
+      if (!photos.length) {
+        alert('請至少上傳一張照片！');
+        return;
+      }
+      slides = generateSlides();
+      currentIndex = 0;
+      isPlaying = true;
+      setupView.style.display = 'none';
+      playerView.classList.add('show');
+      renderSlide();
+      startTimer();
+    }
+
+    function closePlayer() {
+      isPlaying = false;
+      clearInterval(timer);
+      playerView.classList.remove('show');
+      setupView.style.display = 'block';
+    }
+
+    function renderSlide() {
+      if (!slides.length) return;
+      const slide = slides[currentIndex];
+      playerImage.src = slide.src;
+      if (slide.overlayQuote) {
+        quoteLayer.style.display = 'flex';
+        quoteText.textContent = slide.overlayQuote;
+      } else {
+        quoteLayer.style.display = 'none';
+      }
+      const progress = ((currentIndex + 1) / slides.length) * 100;
+      progressBar.style.width = progress + '%';
+      counterText.textContent = (currentIndex+1) + ' / ' + slides.length;
+    }
+
+    function nextSlide() {
+      if (currentIndex < slides.length - 1) {
+        currentIndex++;
+        renderSlide();
+      } else {
+        isPlaying = false;
+        clearInterval(timer);
+        playPauseBtn.textContent = '播放';
+      }
+    }
+
+    function prevSlide() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        renderSlide();
+      }
+    }
+
+    function startTimer() {
+      clearInterval(timer);
+      if (!isPlaying) return;
+      timer = setInterval(() => {
+        nextSlide();
+      }, 4000);
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      playPauseBtn.textContent = isPlaying ? '暫停' : '播放';
+      if (isPlaying) {
+        if (currentIndex === slides.length - 1) {
+          currentIndex = 0;
+          renderSlide();
+        }
+        startTimer();
+      } else {
+        clearInterval(timer);
+      }
+    }
+
+    // --------- 匯出 HTML ---------
+    function exportHtml() {
+      if (!photos.length) {
+        alert('沒有照片可以打包！');
+        return;
+      }
+      const exportSlides = generateSlides();
+      const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>課堂照片播放器</title>
-    <style>
-        body { margin: 0; background: #000; color: white; font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-        #container { width: 100%; height: 100%; position: relative; }
-        .slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.8s ease-in-out; pointer-events: none; display: flex; justify-content: center; align-items: center; }
-        .slide.active { opacity: 1; pointer-events: auto; }
-        
-        /* 圖片容器，確保居中且不變形 */
-        .img-wrapper { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        img { max-width: 95%; max-height: 95%; object-fit: contain; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-
-        /* 格言疊加層 */
-        .quote-overlay {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            padding: 60px 20px 100px; /* 底部留空間給控制列 */
-            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
-            display: flex;
-            justify-content: center;
-            text-align: center;
-        }
-        .quote-text-box {
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            padding: 20px 40px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            max-width: 80%;
-            animation: slideUp 0.8s ease-out;
-        }
-        .quote-text-box h1 {
-            font-size: 2.5rem;
-            margin: 0;
-            color: #fbbf24;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-        }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        #controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; gap: 10px; background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 30px; backdrop-filter: blur(5px); }
-        button { background: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background: #e2e8f0; transform: scale(1.05); }
-        .progress { position: fixed; top: 0; left: 0; height: 5px; background: #fbbf24; transition: width 0.5s; z-index: 100; }
-    </style>
+<meta charset="UTF-8">
+<title>ClassMemory Player - Export</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { margin: 0; background: #000; color: white; font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+#container { width: 100%; height: 100%; position: relative; }
+.slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.8s ease-in-out; pointer-events: none; display: flex; justify-content: center; align-items: center; }
+.slide.active { opacity: 1; pointer-events: auto; }
+.img-wrapper { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+img { max-width: 95%; max-height: 95%; object-fit: contain; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.quote-overlay { position: absolute; bottom: 0; left: 0; width: 100%; padding: 60px 20px 100px; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%); display: flex; justify-content: center; text-align: center; }
+.quote-text-box { background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); padding: 20px 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); max-width: 80%; animation: slideUp 0.8s ease-out; }
+.quote-text-box h1 { font-size: 2.1rem; margin: 0; color: #fbbf24; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+#controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; gap: 10px; background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 30px; backdrop-filter: blur(5px); }
+button { background: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+button:hover { background: #e2e8f0; transform: scale(1.05); }
+.progress { position: fixed; top: 0; left: 0; height: 5px; background: #fbbf24; transition: width 0.5s; z-index: 100; }
+</style>
 </head>
 <body>
-    <div id="progress" class="progress" style="width: 0%"></div>
-    <div id="container"></div>
-    <div id="controls">
-        <button onclick="prev()">上一張</button>
-        <button onclick="togglePlay()" id="playBtn">暫停</button>
-        <button onclick="next()">下一張</button>
-    </div>
+<div id="progress" class="progress" style="width:0%"></div>
+<div id="container"></div>
+<div id="controls">
+  <button onclick="prev()">上一張</button>
+  <button onclick="togglePlay()" id="playBtn">暫停</button>
+  <button onclick="next()">下一張</button>
+</div>
+<script>
+const slidesData = ${JSON.stringify(exportSlides)};
+let currentIndex = 0;
+let isPlaying = true;
+let timer;
+const container = document.getElementById('container');
+const playBtn = document.getElementById('playBtn');
+const progressBar = document.getElementById('progress');
 
-    <script>
-        const slidesData = ${JSON.stringify(exportSlides)};
-        let currentIndex = 0;
-        let isPlaying = true;
-        let timer;
-        const container = document.getElementById('container');
-        const playBtn = document.getElementById('playBtn');
-        const progressBar = document.getElementById('progress');
+function render() {
+  container.innerHTML = slidesData.map((slide, index) => {
+    const activeClass = index === currentIndex ? 'active' : '';
+    let quoteHTML = '';
+    if (slide.overlayQuote) {
+      quoteHTML = '<div class="quote-overlay"><div class="quote-text-box"><h1>' + slide.overlayQuote + '</h1></div></div>';
+    }
+    return '<div class="slide ' + activeClass + '"><div class="img-wrapper"><img src="' + slide.src + '" />' + quoteHTML + '</div></div>';
+  }).join('');
+  updateProgress();
+}
+function updateProgress() {
+  const width = ((currentIndex + 1) / slidesData.length) * 100;
+  progressBar.style.width = width + '%';
+}
+function showSlide(index) {
+  const domSlides = document.querySelectorAll('.slide');
+  domSlides.forEach((s, i) => {
+    s.classList.toggle('active', i === index);
+  });
+  currentIndex = index;
+  updateProgress();
+}
+function next() {
+  if (currentIndex < slidesData.length - 1) {
+    showSlide(currentIndex + 1);
+  } else {
+    setIsPlaying(false);
+  }
+}
+function prev() {
+  if (currentIndex > 0) {
+    showSlide(currentIndex - 1);
+  }
+}
+function togglePlay() {
+  setIsPlaying(!isPlaying);
+}
+function setIsPlaying(state) {
+  isPlaying = state;
+  playBtn.innerText = isPlaying ? "暫停" : "播放";
+  if (isPlaying) {
+    if (currentIndex === slidesData.length - 1) {
+      showSlide(0);
+    }
+    startTimer();
+  } else {
+    clearInterval(timer);
+  }
+}
+function startTimer() {
+  clearInterval(timer);
+  timer = setInterval(() => { next(); }, 4000);
+}
+render();
+startTimer();
+<\/script>
+</body>
+</html>`;
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ClassMemory-Player.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
 
-        function render() {
-            container.innerHTML = slidesData.map((slide, index) => {
-                const activeClass = index === currentIndex ? 'active' : '';
-                
-                // 準備格言 HTML (如果有)
-                let quoteHTML = '';
-                if (slide.overlayQuote) {
-                    quoteHTML = \`
-                        <div class="quote-overlay">
-                            <div class="quote-text-box">
-                                <h1>\${slide.overlayQuote}</h1>
-                            </div>
-                        </div>
-                    \`;
-                }
+    // --------- 綁定事件 ---------
+    previewBtn.addEventListener('click', openPlayer);
+    exportBtn.addEventListener('click', exportHtml);
+    exitBtn.addEventListener('click', closePlayer);
+    prevBtn.addEventListener('click', () => { prevSlide(); });
+    nextBtn.addEventListener('click', () => { nextSlide(); });
+    playPauseBtn.addEventListener('click', () => { togglePlay(); });
 
-                // 組合圖片和格言
-                return \`
-                    <div class="slide \${activeClass}">
-                        <div class="img-wrapper">
-                            <img src="\${slide.src}" />
-                            \${quoteHTML}
-                        </div>
-                    </div>
-                \`;
-            }).join('');
-            updateProgress();
-        }
-
-        function updateProgress() {
-            const width = ((currentIndex + 1) / slidesData.length) * 100;
-            progressBar.style.width = width + '%';
-        }
-
-        function showSlide(index) {
-            const domSlides = document.querySelectorAll('.slide');
-            domSlides.forEach((s, i) => {
-                s.classList.toggle('active', i === index);
-            });
-            currentIndex = index;
-            updateProgress();
-        }
-
-        function next() {
-            if (currentIndex < slidesData.length - 1) {
-                showSlide(currentIndex + 1);
-            } else {
-                setIsPlaying(false);
-            }
-        }
-
-        function prev() {
-            if (currentIndex > 0) {
-                showSlide(currentIndex - 1);
-            }
-        }
-
-        function togglePlay() {
-            setIsPlaying(!isPlaying);
-        }
-
-        function setIsPlaying(state) {
-            isPlaying = state;
-            playBtn.innerText = isPlaying ? "暫停" : "播放";
-            if (isPlaying) {
-                if (currentIndex === slidesData.length - 1) {
-                    showSlide(0);
-                }
-                startTimer();
-            } else {
-                clearInterval(timer);
-            }
-        }
-
-        function startTimer() {
-            clearInterval(timer);
-            timer = setInterval(() => {
-                next();
-            }, 4000);
-        }
-
-        // Init
-        render();
-        startTimer();
-    </script>
+    // 鍵盤左右鍵 & 空白鍵控制
+    document.addEventListener('keydown', (e) => {
+      if (!playerView.classList.contains('show')) return;
+      if (e.key === 'ArrowRight') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+      if (e.key === ' ' ) {
+        e.preventDefault();
+        togglePlay();
+      }
+      if (e.key === 'Escape') closePlayer();
+    });
+  </script>
 </body>
 </html>
-    `;
-
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '我的課堂播放器.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const currentSlide = slides[currentSlideIndex];
-
-  return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
-      {step === 'setup' && (
-        <div className="max-w-4xl mx-auto p-6">
-          <header className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-yellow-400 mb-2">📸 課堂照片格言播放器</h1>
-            <p className="text-slate-400">上傳照片，設定格言(將顯示在第1,5,10張照片上)，即可播放或下載。</p>
-          </header>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* 左側：上傳區 */}
-            <div className="space-y-6">
-              <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                  <ImageIcon className="text-blue-400" />
-                  1. 上傳照片 ({photos.length} 張)
-                </h2>
-                <div className="relative border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:bg-slate-700/50 transition cursor-pointer group">
-                  <input 
-                    type="file" 
-                    multiple 
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <Upload className="mx-auto w-12 h-12 text-slate-500 group-hover:text-blue-400 mb-2 transition" />
-                  <p className="text-sm text-slate-400">點擊或拖拉照片至此 (建議10張以上)</p>
-                </div>
-                
-                {/* 預覽縮圖 */}
-                {photos.length > 0 && (
-                  <div className="mt-4 grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                    {photos.map((p, idx) => {
-                      // 標記哪些照片會有格言
-                      const hasQuote = idx === 0 || idx === 4 || idx === 9;
-                      return (
-                        <div key={p.id} className={`relative group aspect-square rounded-md overflow-hidden ${hasQuote ? 'ring-2 ring-yellow-400' : ''}`}>
-                          <img src={p.src} alt="preview" className="w-full h-full object-cover" />
-                          <button 
-                            onClick={() => removePhoto(p.id)}
-                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
-                          >
-                            <X size={12} />
-                          </button>
-                          <span className="absolute bottom-1 left-1 bg-black/60 text-[10px] px-1 rounded text-white">
-                            {idx + 1} {hasQuote && '💬'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {photos.length > 0 && <p className="text-xs text-slate-500 mt-2">* 黃色框和 💬 標記的照片將會顯示格言。</p>}
-              </div>
-            </div>
-
-            {/* 右側：設定區 */}
-            <div className="space-y-6">
-              <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                  <MonitorPlay className="text-yellow-400" />
-                  2. 設定格言 (疊加在照片上)
-                </h2>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">第 1 張照片格言</label>
-                    <textarea 
-                      value={quotes.start}
-                      onChange={(e) => setQuotes({...quotes, start: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
-                      rows="2"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">第 5 張照片格言</label>
-                    <textarea 
-                      value={quotes.middle}
-                      onChange={(e) => setQuotes({...quotes, middle: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
-                      rows="2"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">第 10 張照片格言</label>
-                    <textarea 
-                      value={quotes.end}
-                      onChange={(e) => setQuotes({...quotes, end: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
-                      rows="2"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 操作按鈕 */}
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={handleStartPlay}
-                  className="bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-900/50"
-                >
-                  <Play size={20} />
-                  線上預覽播放
-                </button>
-                <button 
-                  onClick={handleExport}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-900/50"
-                >
-                  <Save size={20} />
-                  打包下載 HTML
-                </button>
-              </div>
-              <p className="text-xs text-center text-slate-500 mt-2">
-                *「打包下載」會產生一個包含所有照片的獨立檔案，方便攜帶至無網路環境使用。
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 播放模式 */}
-      {step === 'player' && currentSlide && (
-        <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">
-          {/* 進度條 */}
-          <div className="absolute top-0 left-0 h-1 bg-yellow-500 transition-all duration-500" style={{ width: `${((currentSlideIndex + 1) / slides.length) * 100}%` }}></div>
-
-          {/* 內容顯示區 (修改為照片+疊加層) */}
-          <div className="w-full h-full max-w-7xl max-h-[90vh] flex items-center justify-center p-4 relative group">
-             <img 
-               src={currentSlide.src} 
-               alt="slide" 
-               className="max-w-full max-h-full object-contain rounded shadow-2xl animate-fade-in"
-             />
-
-             {/* 格言疊加層 (如果有的話) */}
-             {currentSlide.overlayQuote && (
-               <div className="absolute inset-0 flex items-end justify-center pb-24 md:pb-20 bg-gradient-to-t from-black/90 via-black/30 to-transparent animate-fade-in">
-                 <div className="bg-black/50 backdrop-blur-md p-6 md:p-8 rounded-3xl border border-white/20 max-w-4xl text-center mx-4 transform transition-all duration-700 translate-y-0 opacity-100">
-                   <h1 className="text-2xl md:text-4xl font-bold text-yellow-400 leading-tight drop-shadow-lg">
-                     {currentSlide.overlayQuote}
-                   </h1>
-                 </div>
-               </div>
-             )}
-          </div>
-
-          {/* 控制列 */}
-          <div className="absolute bottom-8 flex items-center gap-6 bg-slate-900/80 backdrop-blur px-6 py-3 rounded-full border border-white/10 z-50">
-             <button 
-              onClick={() => setStep('setup')}
-              className="text-slate-400 hover:text-white transition p-2"
-              title="離開"
-             >
-               <X size={24} />
-             </button>
-             
-             <div className="h-6 w-[1px] bg-white/20"></div>
-
-             <button onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))} className="text-white hover:text-yellow-400 transition">
-               <ChevronLeft size={32} />
-             </button>
-             
-             <button 
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="bg-yellow-500 hover:bg-yellow-400 text-black rounded-full p-3 transition transform hover:scale-105"
-             >
-               {isPlaying ? <span className="font-bold text-xs block w-6">PAUSE</span> : <Play size={24} fill="currentColor" />}
-             </button>
-
-             <button onClick={() => setCurrentSlideIndex(Math.min(slides.length - 1, currentSlideIndex + 1))} className="text-white hover:text-yellow-400 transition">
-               <ChevronRight size={32} />
-             </button>
-             
-             <div className="h-6 w-[1px] bg-white/20"></div>
-
-             <span className="text-slate-400 font-mono text-sm">
-               {currentSlideIndex + 1} / {slides.length}
-             </span>
-          </div>
-        </div>
-      )}
-      
-      <style>{`
-        .animate-fade-in {
-          animation: fadeIn 0.8s ease-in-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        /* 自定義捲軸 */
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #1e293b; 
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #475569; 
-          border-radius: 3px;
-        }
-      `}</style>
-    </div>
-  );
-}
