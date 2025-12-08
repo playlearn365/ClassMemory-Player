@@ -382,6 +382,18 @@
           <button class="btn btn-primary" id="previewBtn">▶ 線上預覽播放</button>
           <button class="btn btn-green" id="exportBtn">💾 下載給家長的播放器</button>
         </div>
+
+        <!-- 新增：清除本次設定 -->
+        <div style="margin-top:8px;text-align:right;">
+          <button
+            id="resetBtn"
+            class="btn"
+            style="background:#0f172a;color:#e5e7eb;padding:8px 14px;font-size:12px;box-shadow:none;"
+          >
+            🧹 清除本次設定
+          </button>
+        </div>
+
         <p class="hint">＊老師可將下載的 HTML 檔，用 LINE / Email 直接傳給家長，家長用電腦或平板打開檔案即可播放，不需安裝任何程式。</p>
       </div>
     </div>
@@ -410,6 +422,11 @@
   </div>
 
   <script>
+    // --------- 初始預設格言 ---------
+    const DEFAULT_QUOTE_START = '好的開始是成功的一半';
+    const DEFAULT_QUOTE_MIDDLE = '休息是為了走更長遠的路';
+    const DEFAULT_QUOTE_END = '學而不思則罔，思而不學則殆';
+
     // --------- 狀態 ---------
     const photos = []; // {id, src, name}
     let slides = [];   // {src, overlayQuote}
@@ -429,6 +446,7 @@
 
     const previewBtn = document.getElementById('previewBtn');
     const exportBtn = document.getElementById('exportBtn');
+    const resetBtn = document.getElementById('resetBtn');
 
     const playerView = document.getElementById('playerView');
     const setupView = document.getElementById('setupView');
@@ -524,6 +542,7 @@
       isPlaying = true;
       setupView.style.display = 'none';
       playerView.classList.add('show');
+      playPauseBtn.textContent = '暫停';
       renderSlide();
       startTimer();
     }
@@ -590,6 +609,31 @@
       }
     }
 
+    // --------- 清除本次設定（保留預設格言） ---------
+    function resetAll() {
+      // 清空照片陣列與縮圖
+      photos.length = 0;
+      renderThumbs();
+
+      // 恢復預設格言
+      quoteStartEl.value = DEFAULT_QUOTE_START;
+      quoteMiddleEl.value = DEFAULT_QUOTE_MIDDLE;
+      quoteEndEl.value = DEFAULT_QUOTE_END;
+
+      // 清空給家長的檔名
+      fileNameInput.value = '';
+
+      // 回到編輯畫面、停止播放
+      isPlaying = false;
+      clearInterval(timer);
+      playerView.classList.remove('show');
+      setupView.style.display = 'block';
+
+      // 重設進度條與計數
+      progressBar.style.width = '0%';
+      counterText.textContent = '0 / 0';
+    }
+
     // --------- 匯出 HTML（給家長） ---------
     function exportHtml() {
       if (!photos.length) {
@@ -605,12 +649,14 @@
         fileName += '.html';
       }
 
+      const safeTitle = fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
       const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>${fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
+<title>${safeTitle}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body { margin: 0; background: #000; color: white; font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
@@ -705,6 +751,7 @@ startTimer();
 <\/script>
 </body>
 </html>`;
+
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -719,17 +766,18 @@ startTimer();
     // --------- 綁定事件 ---------
     previewBtn.addEventListener('click', openPlayer);
     exportBtn.addEventListener('click', exportHtml);
+    resetBtn.addEventListener('click', resetAll);
     exitBtn.addEventListener('click', closePlayer);
-    prevBtn.addEventListener('click', () => { prevSlide(); });
-    nextBtn.addEventListener('click', () => { nextSlide(); });
-    playPauseBtn.addEventListener('click', () => { togglePlay(); });
+    prevBtn.addEventListener('click', prevSlide);
+    nextBtn.addEventListener('click', nextSlide);
+    playPauseBtn.addEventListener('click', togglePlay);
 
     // 鍵盤左右鍵 & 空白鍵控制
     document.addEventListener('keydown', (e) => {
       if (!playerView.classList.contains('show')) return;
       if (e.key === 'ArrowRight') nextSlide();
       if (e.key === 'ArrowLeft') prevSlide();
-      if (e.key === ' ' ) {
+      if (e.key === ' ') {
         e.preventDefault();
         togglePlay();
       }
