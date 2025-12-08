@@ -155,6 +155,23 @@
     }
     label { font-size: 13px; color: #cbd5f5; display: block; margin-bottom: 4px; }
 
+    .text-input {
+      width: 100%;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      padding: 8px 12px;
+      color: #e5e7eb;
+      font-size: 13px;
+      outline: none;
+      transition: 0.2s;
+    }
+    .text-input::placeholder { color: #64748b; }
+    .text-input:focus {
+      border-color: #facc15;
+      box-shadow: 0 0 0 1px rgba(250,204,21,0.5);
+    }
+
     .btn-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -319,7 +336,7 @@
 <body>
   <div class="page" id="setupView">
     <h1>📸 ClassMemory Player</h1>
-    <p class="subtitle">上傳課堂照片，設定格言（會顯示在第 1、5、10 張照片上），即可播放或打包下載 HTML。</p>
+    <p class="subtitle">上傳課堂照片，設定格言（會顯示在第 1、5、10 張照片上），即可播放或下載成一個可以傳給家長的檔案。</p>
 
     <div class="grid">
       <!-- 左：上傳區 -->
@@ -333,9 +350,9 @@
         <p class="small">＊有黃色框與 💬 標記的照片，播放時會顯示格言。</p>
       </div>
 
-      <!-- 右：格言設定 -->
+      <!-- 右：格言 + 檔名設定 -->
       <div class="card">
-        <h2>2. 設定格言（疊加在照片上）</h2>
+        <h2>2. 設定格言與給家長的檔名</h2>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div>
             <label>第 1 張照片格言</label>
@@ -349,13 +366,23 @@
             <label>第 10 張照片格言</label>
             <textarea id="quoteEnd">學而不思則罔，思而不學則殆</textarea>
           </div>
+
+          <div>
+            <label>給家長的檔案名稱（選填）</label>
+            <input
+              id="fileNameInput"
+              class="text-input"
+              placeholder="例如：小太陽班-112學年度成果播放.html"
+            />
+            <p class="small">若未填寫，預設檔名為：ClassMemory-Player.html</p>
+          </div>
         </div>
 
         <div class="btn-row">
           <button class="btn btn-primary" id="previewBtn">▶ 線上預覽播放</button>
-          <button class="btn btn-green" id="exportBtn">💾 打包下載 HTML</button>
+          <button class="btn btn-green" id="exportBtn">💾 下載給家長的播放器</button>
         </div>
-        <p class="hint">＊打包下載會產生一個獨立 HTML 檔，內含所有照片，可在無網路環境播放。</p>
+        <p class="hint">＊老師可將下載的 HTML 檔，用 LINE / Email 直接傳給家長，家長用電腦或平板打開檔案即可播放，不需安裝任何程式。</p>
       </div>
     </div>
   </div>
@@ -397,6 +424,8 @@
     const quoteStartEl = document.getElementById('quoteStart');
     const quoteMiddleEl = document.getElementById('quoteMiddle');
     const quoteEndEl = document.getElementById('quoteEnd');
+
+    const fileNameInput = document.getElementById('fileNameInput');
 
     const previewBtn = document.getElementById('previewBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -561,19 +590,27 @@
       }
     }
 
-    // --------- 匯出 HTML ---------
+    // --------- 匯出 HTML（給家長） ---------
     function exportHtml() {
       if (!photos.length) {
         alert('沒有照片可以打包！');
         return;
       }
       const exportSlides = generateSlides();
+
+      // 準備檔名
+      const rawName = (fileNameInput.value || '').trim();
+      let fileName = rawName || 'ClassMemory-Player';
+      if (!fileName.toLowerCase().endsWith('.html')) {
+        fileName += '.html';
+      }
+
       const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>ClassMemory Player - Export</title>
+<title>${fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body { margin: 0; background: #000; color: white; font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
@@ -672,7 +709,7 @@ startTimer();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ClassMemory-Player.html';
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
