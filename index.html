@@ -336,7 +336,10 @@
 <body>
   <div class="page" id="setupView">
     <h1>📸 ClassMemory Player</h1>
-    <p class="subtitle">上傳課堂照片，設定格言與背景音樂（第 1、5、10 張有格言），即可播放或下載成可以傳給家長的播放器。</p>
+    <p class="subtitle">
+      上傳課堂照片，設定格言（第 1、5、10 張），內建柔和背景音樂，<br/>
+      就能播放或下載給家長使用（可離線播放）。
+    </p>
 
     <div class="grid">
       <!-- 左：上傳照片 -->
@@ -350,9 +353,9 @@
         <p class="small">＊有黃色框與 💬 標記的照片，播放時會顯示格言。（圖片會自動壓縮，讓家長手機比較好開啟）</p>
       </div>
 
-      <!-- 右：格言 + 音樂 + 檔名 -->
+      <!-- 右：格言 + 檔名 -->
       <div class="card">
-        <h2>2. 設定格言、背景音樂與檔名</h2>
+        <h2>2. 設定格言與給家長的檔名</h2>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div>
             <label>第 1 張照片格言</label>
@@ -365,15 +368,6 @@
           <div>
             <label>第 10 張照片格言</label>
             <textarea id="quoteEnd">學而不思則罔，思而不學則殆</textarea>
-          </div>
-
-          <div>
-            <label>背景音樂（可選，最多 3 首）</label>
-            <input type="file" id="bgmInput" accept="audio/*" multiple />
-            <p class="small">＊可上傳最多 3 首 mp3/m4a，然後在下拉選單中選擇本次要使用哪一首。</p>
-            <select id="bgmSelect" class="text-input">
-              <option value="">（不使用背景音樂）</option>
-            </select>
           </div>
 
           <div>
@@ -406,7 +400,8 @@
         <!-- 手機下載提示區 -->
         <div id="downloadArea" class="small" style="margin-top:6px;text-align:center;"></div>
 
-        <p class="hint">＊若在手機上，按下「下載」後，請點擊上方出現的綠色連結下載檔案。</p>
+        <p class="hint">＊手機上按「下載」後，請點擊上方綠色連結下載檔案。</p>
+        <p class="hint">＊背景音樂已內建為一段柔和的環境音樂，老師無須額外準備音樂檔。</p>
       </div>
     </div>
   </div>
@@ -446,10 +441,10 @@
     let isPlaying = false;
     let timer = null;
 
-    // 背景音樂：最多 3 首
-    const bgmList = []; // {id, name, src(dataURL)}
-    let bgmAudio = null;
-    let lastDownloadUrl = null;
+    // 預覽用背景音樂（用 Web Audio 生成柔和環境音）
+    let previewAudioCtx = null;
+    let previewMasterGain = null;
+    let previewIntervals = [];
 
     const photoInput = document.getElementById('photoInput');
     const thumbsEl = document.getElementById('thumbs');
@@ -458,9 +453,6 @@
     const quoteStartEl = document.getElementById('quoteStart');
     const quoteMiddleEl = document.getElementById('quoteMiddle');
     const quoteEndEl = document.getElementById('quoteEnd');
-
-    const bgmInput = document.getElementById('bgmInput');
-    const bgmSelect = document.getElementById('bgmSelect');
 
     const fileNameInput = document.getElementById('fileNameInput');
     const downloadArea = document.getElementById('downloadArea');
@@ -482,7 +474,68 @@
     const nextBtn = document.getElementById('nextBtn');
     const playPauseBtn = document.getElementById('playPauseBtn');
 
-    // --------- 壓縮圖片（方案 2：用 canvas 降尺寸＆base64） ---------
+    let lastDownloadUrl = null;
+
+    // --------- 用 Web Audio 生成柔和背景音（預覽用） ---------
+    function startPreviewBgm() {
+      if (previewAudioCtx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      previewAudioCtx = new AC();
+      previewMasterGain = previewAudioCtx.createGain();
+      previewMasterGain.gain.value = 0.25;
+      previewMasterGain.connect(previewAudioCtx.destination);
+
+      function playChord() {
+        if (!previewAudioCtx) return;
+        const now = previewAudioCtx.currentTime;
+
+        const freqs = [261.63, 329.63, 392.0]; // C 大調和弦 C4 E4 G4
+        freqs.forEach((f, i) => {
+          const osc = previewAudioCtx.createOscillator();
+          const g = previewAudioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = f;
+          osc.connect(g);
+          g.connect(previewMasterGain);
+
+          const startTime = now + i * 0.2;
+          const endTime = startTime + 4;
+          g.gain.setValueAtTime(0, startTime);
+          g.gain.linearRampToValueAtTime(0.5, startTime + 1);
+          g.gain.linearRampToValueAtTime(0, endTime);
+
+          osc.start(startTime);
+          osc.stop(endTime);
+        });
+      }
+
+      // 先播一次
+      playChord();
+      // 每 6 秒播一次和弦
+      const id = setInterval(() => {
+        if (!previewAudioCtx) {
+          clearInterval(id);
+          return;
+        }
+        playChord();
+      }, 6000);
+      previewIntervals.push(id);
+    }
+
+    function stopPreviewBgm() {
+      if (previewIntervals.length) {
+        previewIntervals.forEach(id => clearInterval(id));
+        previewIntervals = [];
+      }
+      if (previewAudioCtx) {
+        previewAudioCtx.close();
+        previewAudioCtx = null;
+        previewMasterGain = null;
+      }
+    }
+
+    // --------- 壓縮圖片（用 canvas 降尺寸＆base64） ---------
     function compressImage(file, callback) {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -506,7 +559,6 @@
           callback(dataUrl);
         };
         img.onerror = () => {
-          // 如果圖片載入失敗，就用原始資料
           callback(ev.target.result);
         };
         img.src = ev.target.result;
@@ -567,49 +619,6 @@
       });
     }
 
-    // --------- 上傳背景音樂（最多 3 首） ---------
-    bgmInput.addEventListener('change', (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-
-      const remaining = 3 - bgmList.length;
-      if (remaining <= 0) {
-        alert('已經有 3 首背景音樂，如需更換可以先清除本次設定。');
-        bgmInput.value = '';
-        return;
-      }
-
-      const toLoad = files.slice(0, remaining);
-      let processed = 0;
-      toLoad.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          bgmList.push({
-            id: Date.now() + Math.random(),
-            name: file.name,
-            src: ev.target.result
-          });
-          processed++;
-          if (processed === toLoad.length) {
-            refreshBgmSelect();
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-
-      bgmInput.value = '';
-    });
-
-    function refreshBgmSelect() {
-      bgmSelect.innerHTML = '<option value="">（不使用背景音樂）</option>';
-      bgmList.forEach((bgm, index) => {
-        const opt = document.createElement('option');
-        opt.value = index;
-        opt.textContent = '🎵 ' + bgm.name;
-        bgmSelect.appendChild(opt);
-      });
-    }
-
     // --------- 產生播放序列 ---------
     function generateSlides() {
       const qStart = quoteStartEl.value.trim();
@@ -638,17 +647,14 @@
       playerView.classList.add('show');
       playPauseBtn.textContent = '暫停';
       renderSlide();
-      setupBgmForPreview();
+      startPreviewBgm();
       startTimer();
     }
 
     function closePlayer() {
       isPlaying = false;
       clearInterval(timer);
-      if (bgmAudio) {
-        bgmAudio.pause();
-        bgmAudio = null;
-      }
+      stopPreviewBgm();
       playerView.classList.remove('show');
       setupView.style.display = 'block';
     }
@@ -703,78 +709,35 @@
           renderSlide();
         }
         startTimer();
-        if (bgmAudio && bgmAudio.paused) {
-          bgmAudio.play().catch(() => {});
-        }
+        // 預覽的背景音樂這裡就不再特別停/啟，用整個播放器開關控制即可
       } else {
         clearInterval(timer);
-        if (bgmAudio) {
-          bgmAudio.pause();
-        }
-      }
-    }
-
-    function setupBgmForPreview() {
-      if (bgmAudio) {
-        bgmAudio.pause();
-        bgmAudio = null;
-      }
-      const selectedIndex = bgmSelect.value;
-      if (selectedIndex === '') return;
-      const bgm = bgmList[Number(selectedIndex)];
-      if (!bgm) return;
-
-      bgmAudio = new Audio(bgm.src);
-      bgmAudio.loop = true;
-      bgmAudio.volume = 0.5;
-      const playPromise = bgmAudio.play();
-      if (playPromise && playPromise.catch) {
-        playPromise.catch(() => {
-          const unlock = () => {
-            bgmAudio.play().catch(() => {});
-            document.removeEventListener('click', unlock);
-            document.removeEventListener('touchstart', unlock);
-          };
-          document.addEventListener('click', unlock);
-          document.addEventListener('touchstart', unlock);
-        });
       }
     }
 
     // --------- 清除本次設定（保留預設格言） ---------
     function resetAll() {
-      // 清照片
       photos.length = 0;
       renderThumbs();
 
-      // 格言回預設
       quoteStartEl.value = DEFAULT_QUOTE_START;
       quoteMiddleEl.value = DEFAULT_QUOTE_MIDDLE;
       quoteEndEl.value = DEFAULT_QUOTE_END;
 
-      // 清檔名
       fileNameInput.value = '';
 
-      // 清背景音樂
-      bgmList.length = 0;
-      refreshBgmSelect();
-      if (bgmAudio) {
-        bgmAudio.pause();
-        bgmAudio = null;
-      }
-
-      // 回到編輯畫面
       isPlaying = false;
       clearInterval(timer);
       playerView.classList.remove('show');
       setupView.style.display = 'block';
-
       progressBar.style.width = '0%';
       counterText.textContent = '0 / 0';
       downloadArea.innerHTML = '';
+
+      stopPreviewBgm();
     }
 
-    // --------- 匯出 HTML（給家長） ---------
+    // --------- 匯出 HTML（給家長，含內建背景音） ---------
     function exportHtml() {
       if (!photos.length) {
         alert('沒有照片可以打包！');
@@ -782,18 +745,6 @@
       }
       const exportSlides = generateSlides();
 
-      // 準備背景音樂（只帶出目前選的那一首）
-      let bgmDataUrl = '';
-      const selectedIndex = bgmSelect.value;
-      if (selectedIndex !== '') {
-        const bgm = bgmList[Number(selectedIndex)];
-        if (bgm) {
-          bgmDataUrl = bgm.src;
-        }
-      }
-      const bgmSrcLiteral = JSON.stringify(bgmDataUrl);
-
-      // 準備檔名
       const rawName = (fileNameInput.value || '').trim();
       let fileName = rawName || 'ClassMemory-Player';
       if (!fileName.toLowerCase().endsWith('.html')) {
@@ -837,33 +788,55 @@ button:hover { background: #e2e8f0; transform: scale(1.05); }
 </div>
 <script>
 const slidesData = ${JSON.stringify(exportSlides)};
-const bgmSrc = ${bgmSrcLiteral};
 let currentIndex = 0;
 let isPlaying = true;
 let timer;
-let bgmAudio = null;
+let audioCtx = null;
+let masterGain = null;
+let chordIntervalId = null;
 
 const container = document.getElementById('container');
 const playBtn = document.getElementById('playBtn');
 const progressBar = document.getElementById('progress');
 
 function setupBgm() {
-  if (!bgmSrc) return;
-  bgmAudio = new Audio(bgmSrc);
-  bgmAudio.loop = true;
-  bgmAudio.volume = 0.5;
-  const start = () => {
-    bgmAudio.play().catch(()=>{});
-    document.removeEventListener('click', start);
-    document.removeEventListener('touchstart', start);
-  };
-  const p = bgmAudio.play();
-  if (p && p.catch) {
-    p.catch(() => {
-      document.addEventListener('click', start);
-      document.addEventListener('touchstart', start);
+  if (audioCtx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  audioCtx = new AC();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.25;
+  masterGain.connect(audioCtx.destination);
+
+  function playChord() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const freqs = [261.63, 329.63, 392.0]; // C 大調和弦
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      osc.connect(g);
+      g.connect(masterGain);
+      const startTime = now + i * 0.2;
+      const endTime = startTime + 4;
+      g.gain.setValueAtTime(0, startTime);
+      g.gain.linearRampToValueAtTime(0.5, startTime + 1);
+      g.gain.linearRampToValueAtTime(0, endTime);
+      osc.start(startTime);
+      osc.stop(endTime);
     });
   }
+
+  playChord();
+  chordIntervalId = setInterval(() => {
+    if (!audioCtx) {
+      clearInterval(chordIntervalId);
+      return;
+    }
+    playChord();
+  }, 6000);
 }
 
 function render() {
@@ -912,14 +885,8 @@ function setIsPlaying(state) {
       showSlide(0);
     }
     startTimer();
-    if (bgmAudio && bgmAudio.paused) {
-      bgmAudio.play().catch(()=>{});
-    }
   } else {
     clearInterval(timer);
-    if (bgmAudio) {
-      bgmAudio.pause();
-    }
   }
 }
 function startTimer() {
@@ -928,8 +895,19 @@ function startTimer() {
 }
 
 render();
-setupBgm();
 startTimer();
+
+// 嘗試自動啟動背景音，若被阻擋，等使用者點擊畫面
+try {
+  setupBgm();
+} catch (e) {}
+document.addEventListener('click', () => {
+  try { setupBgm(); } catch(e) {}
+}, { once: true });
+document.addEventListener('touchstart', () => {
+  try { setupBgm(); } catch(e) {}
+}, { once: true });
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') next();
   if (e.key === 'ArrowLeft') prev();
@@ -948,7 +926,6 @@ document.addEventListener('keydown', (e) => {
       const url = URL.createObjectURL(blob);
       lastDownloadUrl = url;
 
-      // 手機友善：在畫面上顯示一個明顯連結，請老師/家長自行點擊下載
       downloadArea.innerHTML = '';
       const link = document.createElement('a');
       link.href = url;
@@ -959,8 +936,11 @@ document.addEventListener('keydown', (e) => {
       link.style.fontWeight = '600';
       downloadArea.appendChild(link);
 
-      // 桌機上仍嘗試自動觸發下載（方便老師）
-      link.click();
+      // 桌機嘗試自動下載
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      if (!isMobile) {
+        link.click();
+      }
     }
 
     // --------- 綁定事件 ---------
@@ -972,7 +952,6 @@ document.addEventListener('keydown', (e) => {
     nextBtn.addEventListener('click', nextSlide);
     playPauseBtn.addEventListener('click', togglePlay);
 
-    // 鍵盤控制（僅在預覽播放時生效）
     document.addEventListener('keydown', (e) => {
       if (!playerView.classList.contains('show')) return;
       if (e.key === 'ArrowRight') nextSlide();
