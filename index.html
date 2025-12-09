@@ -336,10 +336,10 @@
 <body>
   <div class="page" id="setupView">
     <h1>📸 ClassMemory Player</h1>
-    <p class="subtitle">上傳課堂照片，設定格言（會顯示在第 1、5、10 張照片上），即可播放或下載成一個可以傳給家長的檔案。</p>
+    <p class="subtitle">上傳課堂照片，設定格言與背景音樂（第 1、5、10 張有格言），即可播放或下載成可以傳給家長的播放器。</p>
 
     <div class="grid">
-      <!-- 左：上傳區 -->
+      <!-- 左：上傳照片 -->
       <div class="card">
         <h2>1. 上傳照片（<span id="photoCount">0</span> 張）</h2>
         <div class="upload-area">
@@ -347,12 +347,12 @@
           <input type="file" id="photoInput" accept="image/*" multiple />
         </div>
         <div id="thumbs" class="thumbs"></div>
-        <p class="small">＊有黃色框與 💬 標記的照片，播放時會顯示格言。</p>
+        <p class="small">＊有黃色框與 💬 標記的照片，播放時會顯示格言。（圖片會自動壓縮，讓家長手機比較好開啟）</p>
       </div>
 
-      <!-- 右：格言 + 檔名設定 -->
+      <!-- 右：格言 + 音樂 + 檔名 -->
       <div class="card">
-        <h2>2. 設定格言與給家長的檔名</h2>
+        <h2>2. 設定格言、背景音樂與檔名</h2>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div>
             <label>第 1 張照片格言</label>
@@ -365,6 +365,15 @@
           <div>
             <label>第 10 張照片格言</label>
             <textarea id="quoteEnd">學而不思則罔，思而不學則殆</textarea>
+          </div>
+
+          <div>
+            <label>背景音樂（可選，最多 3 首）</label>
+            <input type="file" id="bgmInput" accept="audio/*" multiple />
+            <p class="small">＊可上傳最多 3 首 mp3/m4a，然後在下拉選單中選擇本次要使用哪一首。</p>
+            <select id="bgmSelect" class="text-input">
+              <option value="">（不使用背景音樂）</option>
+            </select>
           </div>
 
           <div>
@@ -383,7 +392,7 @@
           <button class="btn btn-green" id="exportBtn">💾 下載給家長的播放器</button>
         </div>
 
-        <!-- 新增：清除本次設定 -->
+        <!-- 清除本次設定 -->
         <div style="margin-top:8px;text-align:right;">
           <button
             id="resetBtn"
@@ -394,7 +403,10 @@
           </button>
         </div>
 
-        <p class="hint">＊老師可將下載的 HTML 檔，用 LINE / Email 直接傳給家長，家長用電腦或平板打開檔案即可播放，不需安裝任何程式。</p>
+        <!-- 手機下載提示區 -->
+        <div id="downloadArea" class="small" style="margin-top:6px;text-align:center;"></div>
+
+        <p class="hint">＊若在手機上，按下「下載」後，請點擊上方出現的綠色連結下載檔案。</p>
       </div>
     </div>
   </div>
@@ -434,6 +446,11 @@
     let isPlaying = false;
     let timer = null;
 
+    // 背景音樂：最多 3 首
+    const bgmList = []; // {id, name, src(dataURL)}
+    let bgmAudio = null;
+    let lastDownloadUrl = null;
+
     const photoInput = document.getElementById('photoInput');
     const thumbsEl = document.getElementById('thumbs');
     const photoCountEl = document.getElementById('photoCount');
@@ -442,7 +459,11 @@
     const quoteMiddleEl = document.getElementById('quoteMiddle');
     const quoteEndEl = document.getElementById('quoteEnd');
 
+    const bgmInput = document.getElementById('bgmInput');
+    const bgmSelect = document.getElementById('bgmSelect');
+
     const fileNameInput = document.getElementById('fileNameInput');
+    const downloadArea = document.getElementById('downloadArea');
 
     const previewBtn = document.getElementById('previewBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -461,6 +482,38 @@
     const nextBtn = document.getElementById('nextBtn');
     const playPauseBtn = document.getElementById('playPauseBtn');
 
+    // --------- 壓縮圖片（方案 2：用 canvas 降尺寸＆base64） ---------
+    function compressImage(file, callback) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = 1600;
+          const maxH = 1600;
+          let { width, height } = img;
+          if (width > maxW || height > maxH) {
+            const ratio = Math.min(maxW / width, maxH / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const quality = 0.8;
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          callback(dataUrl);
+        };
+        img.onerror = () => {
+          // 如果圖片載入失敗，就用原始資料
+          callback(ev.target.result);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
     // --------- 上傳照片 ---------
     photoInput.addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
@@ -468,19 +521,17 @@
 
       let processed = 0;
       files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
+        compressImage(file, (dataUrl) => {
           photos.push({
             id: Date.now() + Math.random(),
-            src: ev.target.result,
+            src: dataUrl,
             name: file.name
           });
           processed++;
           if (processed === files.length) {
             renderThumbs();
           }
-        };
-        reader.readAsDataURL(file);
+        });
       });
 
       photoInput.value = '';
@@ -516,6 +567,49 @@
       });
     }
 
+    // --------- 上傳背景音樂（最多 3 首） ---------
+    bgmInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      const remaining = 3 - bgmList.length;
+      if (remaining <= 0) {
+        alert('已經有 3 首背景音樂，如需更換可以先清除本次設定。');
+        bgmInput.value = '';
+        return;
+      }
+
+      const toLoad = files.slice(0, remaining);
+      let processed = 0;
+      toLoad.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          bgmList.push({
+            id: Date.now() + Math.random(),
+            name: file.name,
+            src: ev.target.result
+          });
+          processed++;
+          if (processed === toLoad.length) {
+            refreshBgmSelect();
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+
+      bgmInput.value = '';
+    });
+
+    function refreshBgmSelect() {
+      bgmSelect.innerHTML = '<option value="">（不使用背景音樂）</option>';
+      bgmList.forEach((bgm, index) => {
+        const opt = document.createElement('option');
+        opt.value = index;
+        opt.textContent = '🎵 ' + bgm.name;
+        bgmSelect.appendChild(opt);
+      });
+    }
+
     // --------- 產生播放序列 ---------
     function generateSlides() {
       const qStart = quoteStartEl.value.trim();
@@ -531,7 +625,7 @@
       });
     }
 
-    // --------- 播放器 ---------
+    // --------- 播放器（預覽） ---------
     function openPlayer() {
       if (!photos.length) {
         alert('請至少上傳一張照片！');
@@ -544,12 +638,17 @@
       playerView.classList.add('show');
       playPauseBtn.textContent = '暫停';
       renderSlide();
+      setupBgmForPreview();
       startTimer();
     }
 
     function closePlayer() {
       isPlaying = false;
       clearInterval(timer);
+      if (bgmAudio) {
+        bgmAudio.pause();
+        bgmAudio = null;
+      }
       playerView.classList.remove('show');
       setupView.style.display = 'block';
     }
@@ -604,34 +703,75 @@
           renderSlide();
         }
         startTimer();
+        if (bgmAudio && bgmAudio.paused) {
+          bgmAudio.play().catch(() => {});
+        }
       } else {
         clearInterval(timer);
+        if (bgmAudio) {
+          bgmAudio.pause();
+        }
+      }
+    }
+
+    function setupBgmForPreview() {
+      if (bgmAudio) {
+        bgmAudio.pause();
+        bgmAudio = null;
+      }
+      const selectedIndex = bgmSelect.value;
+      if (selectedIndex === '') return;
+      const bgm = bgmList[Number(selectedIndex)];
+      if (!bgm) return;
+
+      bgmAudio = new Audio(bgm.src);
+      bgmAudio.loop = true;
+      bgmAudio.volume = 0.5;
+      const playPromise = bgmAudio.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(() => {
+          const unlock = () => {
+            bgmAudio.play().catch(() => {});
+            document.removeEventListener('click', unlock);
+            document.removeEventListener('touchstart', unlock);
+          };
+          document.addEventListener('click', unlock);
+          document.addEventListener('touchstart', unlock);
+        });
       }
     }
 
     // --------- 清除本次設定（保留預設格言） ---------
     function resetAll() {
-      // 清空照片陣列與縮圖
+      // 清照片
       photos.length = 0;
       renderThumbs();
 
-      // 恢復預設格言
+      // 格言回預設
       quoteStartEl.value = DEFAULT_QUOTE_START;
       quoteMiddleEl.value = DEFAULT_QUOTE_MIDDLE;
       quoteEndEl.value = DEFAULT_QUOTE_END;
 
-      // 清空給家長的檔名
+      // 清檔名
       fileNameInput.value = '';
 
-      // 回到編輯畫面、停止播放
+      // 清背景音樂
+      bgmList.length = 0;
+      refreshBgmSelect();
+      if (bgmAudio) {
+        bgmAudio.pause();
+        bgmAudio = null;
+      }
+
+      // 回到編輯畫面
       isPlaying = false;
       clearInterval(timer);
       playerView.classList.remove('show');
       setupView.style.display = 'block';
 
-      // 重設進度條與計數
       progressBar.style.width = '0%';
       counterText.textContent = '0 / 0';
+      downloadArea.innerHTML = '';
     }
 
     // --------- 匯出 HTML（給家長） ---------
@@ -642,13 +782,23 @@
       }
       const exportSlides = generateSlides();
 
+      // 準備背景音樂（只帶出目前選的那一首）
+      let bgmDataUrl = '';
+      const selectedIndex = bgmSelect.value;
+      if (selectedIndex !== '') {
+        const bgm = bgmList[Number(selectedIndex)];
+        if (bgm) {
+          bgmDataUrl = bgm.src;
+        }
+      }
+      const bgmSrcLiteral = JSON.stringify(bgmDataUrl);
+
       // 準備檔名
       const rawName = (fileNameInput.value || '').trim();
       let fileName = rawName || 'ClassMemory-Player';
       if (!fileName.toLowerCase().endsWith('.html')) {
         fileName += '.html';
       }
-
       const safeTitle = fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
       const htmlContent = `
@@ -673,9 +823,11 @@ img { max-width: 95%; max-height: 95%; object-fit: contain; box-shadow: 0 20px 5
 button { background: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; transition: 0.2s; }
 button:hover { background: #e2e8f0; transform: scale(1.05); }
 .progress { position: fixed; top: 0; left: 0; height: 5px; background: #fbbf24; transition: width 0.5s; z-index: 100; }
+.hint { position: fixed; top: 8px; right: 8px; font-size: 11px; color: #e5e7eb; opacity: 0.8; }
 </style>
 </head>
 <body>
+<div class="hint">若聽不到音樂，請先點一下畫面以啟動播放</div>
 <div id="progress" class="progress" style="width:0%"></div>
 <div id="container"></div>
 <div id="controls">
@@ -685,12 +837,34 @@ button:hover { background: #e2e8f0; transform: scale(1.05); }
 </div>
 <script>
 const slidesData = ${JSON.stringify(exportSlides)};
+const bgmSrc = ${bgmSrcLiteral};
 let currentIndex = 0;
 let isPlaying = true;
 let timer;
+let bgmAudio = null;
+
 const container = document.getElementById('container');
 const playBtn = document.getElementById('playBtn');
 const progressBar = document.getElementById('progress');
+
+function setupBgm() {
+  if (!bgmSrc) return;
+  bgmAudio = new Audio(bgmSrc);
+  bgmAudio.loop = true;
+  bgmAudio.volume = 0.5;
+  const start = () => {
+    bgmAudio.play().catch(()=>{});
+    document.removeEventListener('click', start);
+    document.removeEventListener('touchstart', start);
+  };
+  const p = bgmAudio.play();
+  if (p && p.catch) {
+    p.catch(() => {
+      document.addEventListener('click', start);
+      document.addEventListener('touchstart', start);
+    });
+  }
+}
 
 function render() {
   container.innerHTML = slidesData.map((slide, index) => {
@@ -738,29 +912,55 @@ function setIsPlaying(state) {
       showSlide(0);
     }
     startTimer();
+    if (bgmAudio && bgmAudio.paused) {
+      bgmAudio.play().catch(()=>{});
+    }
   } else {
     clearInterval(timer);
+    if (bgmAudio) {
+      bgmAudio.pause();
+    }
   }
 }
 function startTimer() {
   clearInterval(timer);
   timer = setInterval(() => { next(); }, 4000);
 }
+
 render();
+setupBgm();
 startTimer();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') next();
+  if (e.key === 'ArrowLeft') prev();
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+});
 <\/script>
 </body>
 </html>`;
 
+      if (lastDownloadUrl) {
+        URL.revokeObjectURL(lastDownloadUrl);
+        lastDownloadUrl = null;
+      }
+
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      lastDownloadUrl = url;
+
+      // 手機友善：在畫面上顯示一個明顯連結，請老師/家長自行點擊下載
+      downloadArea.innerHTML = '';
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.textContent = '👉 檔案已準備好，請點這裡下載：' + fileName;
+      link.style.color = '#4ade80';
+      link.style.textDecoration = 'underline';
+      link.style.fontWeight = '600';
+      downloadArea.appendChild(link);
+
+      // 桌機上仍嘗試自動觸發下載（方便老師）
+      link.click();
     }
 
     // --------- 綁定事件 ---------
@@ -772,7 +972,7 @@ startTimer();
     nextBtn.addEventListener('click', nextSlide);
     playPauseBtn.addEventListener('click', togglePlay);
 
-    // 鍵盤左右鍵 & 空白鍵控制
+    // 鍵盤控制（僅在預覽播放時生效）
     document.addEventListener('keydown', (e) => {
       if (!playerView.classList.contains('show')) return;
       if (e.key === 'ArrowRight') nextSlide();
