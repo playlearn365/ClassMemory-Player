@@ -294,6 +294,11 @@ const MUSIC_FILE_NAME = 'music.mp3';
 let bgmBlobUrl = null; 
 let bgmBase64 = null;  
 
+// ✅ 新增：偵測是不是手機 / iOS
+const ua = navigator.userAgent.toLowerCase();
+const isMobile = /iphone|ipad|ipod|android/.test(ua);
+const isIOS = /iphone|ipad|ipod/.test(ua);
+
 // DOM
 const photoInput = document.getElementById('photoInput');
 const thumbs = document.getElementById('thumbs');
@@ -314,7 +319,7 @@ let idx = 0;
 let timer = null;
 let isPlaying = false;
 
-// === 1. 自動載入音樂 (GitHub 模式核心) ===
+// === 1. 自動載入音樂 ===
 async function loadMusic() {
   try {
     const response = await fetch(MUSIC_FILE_NAME).catch(() => null);
@@ -336,7 +341,6 @@ async function loadMusic() {
     reader.readAsDataURL(blob);
     
   } catch (error) {
-    // 預覽模式或檔案不存在時的處理 (不顯示紅字錯誤)
     console.log("Preview mode info: music.mp3 not found nearby (normal in editor).");
     musicStatus.innerHTML = `⚠️ 預覽模式：找不到 <b>${MUSIC_FILE_NAME}</b><br><span style="font-size:11px">若已上傳到 GitHub 同一目錄，此訊息會自動消失。</span>`;
     musicStatus.className = "music-status error";
@@ -469,7 +473,7 @@ function startTimer() {
   timer = setInterval(next, 4000);
 }
 
-// === 4. 匯出邏輯 (改進：雙重下載模式) ===
+// === 4. 匯出邏輯（電腦＝直接下載，手機＝開新分頁 + 儲存教學）===
 function exportForParents() {
   if (!photos.length) {
     alert("沒有照片可以匯出！");
@@ -484,16 +488,17 @@ function exportForParents() {
   exportBtn.classList.add("loading");
   exportBtn.disabled = true;
 
-  // 使用 setTimeout 讓畫面有機會更新
   setTimeout(() => {
-    // 檔名處理 (移除不安全字元)
+    // 1. 檔名處理
     const rawName = document.getElementById('fileName').value.trim() || 'ClassMemory';
-    const safeBase = rawName.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, "_") || "ClassMemory"; // 允許中文
+    const safeBase = rawName.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, "_") || "ClassMemory";
     const safeName = safeBase.endsWith(".html") ? safeBase : safeBase + ".html";
 
+    // 2. 準備資料
     const slidesData = JSON.stringify(getSlides());
     const musicData = bgmBase64 || "";
 
+    // 3. 要給家長的 HTML 內容
     const finalHtml = `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -511,7 +516,7 @@ h1{color:#facc15;margin:0;font-size:24px;text-shadow:0 2px 4px #000}
 </style>
 </head>
 <body>
-<div id="hint">📌 提示：如果按鈕沒反應，請點擊右上角選「以 Chrome/Safari 開啟」</div>
+<div id="hint">📌 提示：若按鈕沒反應，請在瀏覽器右上角選「以 Chrome / Safari 開啟」再試一次。</div>
 <button id="btn" onclick="start()">▶ 開始播放回顧</button>
 <img id="img">
 <div id="q" class="q"><div class="box"><h1 id="qt"></h1></div></div>
@@ -526,9 +531,7 @@ const q=document.getElementById('q');
 const qt=document.getElementById('qt');
 const btn=document.getElementById('btn');
 const hint=document.getElementById('hint');
-
-setTimeout(()=>{if(hint)hint.style.display='none'}, 5000);
-
+setTimeout(()=>{if(hint)hint.style.display='none'},5000);
 function start(){
   btn.style.display='none';
   if(hint) hint.style.display='none';
@@ -556,49 +559,71 @@ function next(){
 </body>
 </html>`;
 
-    // 1. 準備檔案
-    const blob = new Blob([finalHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    
-    // 2. 清空下載區，準備放入新按鈕
-    downloadArea.innerHTML = '';
-    
-    // 3. 嘗試自動下載 (僅電腦版有效)
-    const autoLink = document.createElement("a");
-    autoLink.href = url;
-    autoLink.download = safeName;
-    document.body.appendChild(autoLink);
-    autoLink.click();
-    document.body.removeChild(autoLink);
+    // 4. 建立 URL：桌機用 Blob，手機用 data: URL（相容性較好）
+    let url;
+    if (isMobile) {
+      url = "data:text/html;charset=utf-8," + encodeURIComponent(finalHtml);
+    } else {
+      const blob = new Blob([finalHtml], { type: "text/html" });
+      url = URL.createObjectURL(blob);
+    }
 
-    // 4. 【關鍵】建立手機專用手動按鈕
+    // 5. 清空下載區，準備新按鈕
+    downloadArea.innerHTML = "";
+
+    // 5-1 桌機：嘗試自動下載
+    if (!isMobile) {
+      const autoLink = document.createElement("a");
+      autoLink.href = url;
+      autoLink.download = safeName;
+      document.body.appendChild(autoLink);
+      autoLink.click();
+      document.body.removeChild(autoLink);
+    }
+
+    // 5-2 手機 / 桌機 共同的「粉紅色按鈕」
     const manualBtn = document.createElement("a");
     manualBtn.href = url;
-    manualBtn.download = safeName;
-    manualBtn.className = "btn btn-pink"; // 粉紅色顯眼按鈕
+    manualBtn.className = "btn btn-pink";
     manualBtn.innerHTML = `📥 點此下載檔案：${safeName}`;
-    manualBtn.target = "_blank"; // 幫助手機觸發新視窗/下載
 
-    // 5. 加入教學文字
+    if (!isMobile) {
+      // 桌機支援 download 屬性
+      manualBtn.download = safeName;
+    } else {
+      // 手機：開新分頁，讓使用者再按「分享 → 儲存」
+      manualBtn.target = "_blank";
+      manualBtn.addEventListener("click", () => {
+        if (isIOS) {
+          setTimeout(() => {
+            alert(
+              "iPhone 使用步驟：\n\n" +
+              "1. 會開啟一個新的畫面。\n" +
+              "2. 在畫面下方按「分享」圖示（⬆️）。\n" +
+              "3. 選「儲存到檔案」，即可存到手機。"
+            );
+          }, 800);
+        }
+      });
+    }
+
     const mobileHint = document.createElement("div");
     mobileHint.className = "mobile-hint";
     mobileHint.innerHTML = `
       <strong>📱 手機下載教學：</strong><br>
       1. 點擊上方的<strong style="color:#ec4899">粉紅色按鈕</strong>。<br>
-      2. <strong>iPhone (Safari)</strong>：若出現預覽，請點下方「分享」<span style="font-size:16px">📤</span> →「儲存到檔案」。<br>
-      3. <strong>Android</strong>：通常會直接下載。<br>
-      4. <strong>LINE/FB 瀏覽器</strong>：若無法下載，請點右上角選單 →「使用 Chrome/Safari 開啟」。
-    `;
+      2. <strong>iPhone (Safari)</strong>：若出現預覽，請點下方「分享」📤 →「儲存到檔案」。<br>
+      3. <strong>Android</strong>：通常會直接下載或出現「下載」提醒。<br>
+      4. <strong>LINE/FB 瀏覽器</strong>：若無法下載，請點右上角選單 →「使用 Chrome/Safari 開啟」。`;
 
     downloadArea.appendChild(manualBtn);
     downloadArea.appendChild(mobileHint);
 
-    // 恢復按鈕狀態
+    // 6. 還原按鈕狀態
     exportBtn.innerText = "💾 下載 (給家長)";
     exportBtn.classList.remove("loading");
     exportBtn.disabled = false;
-
-  }, 500); 
+  }, 400);
 }
 </script>
 </body>
