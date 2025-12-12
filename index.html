@@ -112,7 +112,7 @@
       border-radius: 4px;
     }
 
-    /* Music Status Panel (No upload button) */
+    /* Music Panel */
     .music-panel {
       background: #1e293b;
       padding: 15px;
@@ -155,12 +155,36 @@
       width: 100%;
       margin-top: 10px;
       transition: 0.2s;
+      text-decoration: none; /* For links */
     }
     .btn-primary { background: #3b82f6; color: white; }
     .btn-green { background: #10b981; color: white; }
+    
+    /* 手機專用下載按鈕樣式 */
+    .btn-pink { 
+      background: #ec4899; 
+      color: white; 
+      box-shadow: 0 4px 15px rgba(236, 72, 153, 0.4);
+      display: block;
+      text-align: center;
+    } 
     .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .btn.loading { opacity: 0.7; cursor: wait; }
+
+    /* 手機教學提示樣式 */
+    .mobile-hint {
+      margin-top: 15px;
+      padding: 12px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #cbd5f5;
+      text-align: left;
+      line-height: 1.6;
+    }
+    .mobile-hint strong { color: #facc15; }
 
     /* Player Overlay */
     #playerView {
@@ -219,7 +243,7 @@
     <div class="card">
       <h2>2. 設定</h2>
       
-      <!-- Music Section (Hidden details, just status) -->
+      <!-- Music Section -->
       <div class="music-panel">
         <span style="font-size:20px">🎵</span>
         <div id="musicStatus" class="music-status">⏳ 正在載入音樂 (music.mp3)...</div>
@@ -233,14 +257,16 @@
         <label>格言 (第10張)</label>
         <textarea id="q3" rows="1">學而不思則罔，思而不學則殆</textarea>
         
-        <label>下載檔名</label>
-        <input id="fileName" class="text-input" placeholder="例如：回顧影片.html" />
+        <label>下載檔名（建議用英文，例如：xiao1）</label>
+        <input id="fileName" class="text-input" placeholder="例如：xiao1.html" />
       </div>
 
       <div class="btn-row">
         <button class="btn btn-primary" onclick="startPreview()">▶ 線上預覽</button>
         <button class="btn btn-green" id="exportBtn" onclick="exportForParents()">💾 下載 (給家長)</button>
       </div>
+      
+      <!-- 手機設計的下載區 -->
       <div id="downloadArea" style="text-align:center; margin-top:10px;"></div>
     </div>
   </div>
@@ -264,9 +290,9 @@
 
 <script>
 // === 核心變數 ===
-const MUSIC_FILE_NAME = 'music.mp3'; // 這裡指定了檔案名稱
-let bgmBlobUrl = null; // 預覽用的暫存網址
-let bgmBase64 = null;  // 下載用的編碼資料
+const MUSIC_FILE_NAME = 'music.mp3'; 
+let bgmBlobUrl = null; 
+let bgmBase64 = null;  
 
 // DOM
 const photoInput = document.getElementById('photoInput');
@@ -274,6 +300,7 @@ const thumbs = document.getElementById('thumbs');
 const photoCount = document.getElementById('photoCount');
 const musicStatus = document.getElementById('musicStatus');
 const exportBtn = document.getElementById('exportBtn');
+const downloadArea = document.getElementById('downloadArea');
 const playerView = document.getElementById('playerView');
 const bgmPlayer = document.getElementById('bgmPlayer');
 const playerImage = document.getElementById('playerImage');
@@ -290,15 +317,16 @@ let isPlaying = false;
 // === 1. 自動載入音樂 (GitHub 模式核心) ===
 async function loadMusic() {
   try {
-    const response = await fetch(MUSIC_FILE_NAME);
-    if (!response.ok) throw new Error("找不到檔案");
+    const response = await fetch(MUSIC_FILE_NAME).catch(() => null);
     
-    // 取得音樂檔案資料
+    if (!response || !response.ok) {
+        throw new Error("Local file fetch failed");
+    }
+    
     const blob = await response.blob();
     bgmBlobUrl = URL.createObjectURL(blob);
     bgmPlayer.src = bgmBlobUrl;
     
-    // 轉換成 Base64 以備下載使用
     const reader = new FileReader();
     reader.onloadend = () => {
       bgmBase64 = reader.result;
@@ -308,15 +336,14 @@ async function loadMusic() {
     reader.readAsDataURL(blob);
     
   } catch (error) {
-    console.error(error);
-    musicStatus.innerHTML = `⚠️ 找不到 <b>${MUSIC_FILE_NAME}</b><br>請確認已將音樂檔上傳並改名。`;
+    // 預覽模式或檔案不存在時的處理 (不顯示紅字錯誤)
+    console.log("Preview mode info: music.mp3 not found nearby (normal in editor).");
+    musicStatus.innerHTML = `⚠️ 預覽模式：找不到 <b>${MUSIC_FILE_NAME}</b><br><span style="font-size:11px">若已上傳到 GitHub 同一目錄，此訊息會自動消失。</span>`;
     musicStatus.className = "music-status error";
   }
 }
 
-// 頁面載入時執行
 window.addEventListener('DOMContentLoaded', loadMusic);
-
 
 // === 2. 照片處理 ===
 photoInput.addEventListener('change', function(e) {
@@ -332,12 +359,15 @@ photoInput.addEventListener('change', function(e) {
         const c = document.createElement('canvas');
         let w = img.width, h = img.height;
         const max = 1000;
-        if(w > max || h > max) { const r = Math.min(max/w, max/h); w*=r; h*=r; }
+        if (w > max || h > max) { 
+          const r = Math.min(max / w, max / h); 
+          w *= r; h *= r; 
+        }
         c.width = w; c.height = h;
         c.getContext('2d').drawImage(img, 0, 0, w, h);
-        photos.push({src: c.toDataURL('image/jpeg', 0.8)});
+        photos.push({ src: c.toDataURL('image/jpeg', 0.8) });
         count++;
-        if(count === files.length) renderThumbs();
+        if (count === files.length) renderThumbs();
       };
       img.src = ev.target.result;
     };
@@ -363,13 +393,18 @@ function getSlides() {
   const q3 = document.getElementById('q3').value;
   return photos.map((p, i) => {
     let t = "";
-    if(i===0) t=q1; if(i===4) t=q2; if(i===9) t=q3;
-    return {src: p.src, txt: t};
+    if (i === 0) t = q1;
+    if (i === 4) t = q2;
+    if (i === 9) t = q3;
+    return { src: p.src, txt: t };
   });
 }
 
 function startPreview() {
-  if(!photos.length) { alert("請先上傳照片！"); return; }
+  if (!photos.length) { 
+    alert("請先上傳照片！"); 
+    return; 
+  }
   slides = getSlides();
   idx = 0;
   document.getElementById('setupView').style.display = 'none';
@@ -377,7 +412,6 @@ function startPreview() {
   isPlaying = true;
   renderSlide();
   
-  // 嘗試播放
   bgmPlayer.play().catch(e => {
     console.log("Auto-play prevented", e);
   });
@@ -398,20 +432,36 @@ function closePlayer() {
 function renderSlide() {
   const s = slides[idx];
   playerImage.src = s.src;
-  if(s.txt) { quoteText.innerText = s.txt; quoteLayer.style.display = 'flex'; }
-  else { quoteLayer.style.display = 'none'; }
+  if (s.txt) { 
+    quoteText.innerText = s.txt; 
+    quoteLayer.style.display = 'flex'; 
+  } else { 
+    quoteLayer.style.display = 'none'; 
+  }
 }
 
 function next() {
-  if(idx < slides.length - 1) { idx++; renderSlide(); }
-  else { isPlaying = false; clearInterval(timer); bgmPlayer.pause(); ppBtn.innerText='▶'; }
+  if (idx < slides.length - 1) { 
+    idx++; 
+    renderSlide(); 
+  } else { 
+    isPlaying = false; 
+    clearInterval(timer); 
+    bgmPlayer.pause(); 
+    ppBtn.innerText = '▶'; 
+  }
 }
 
 function togglePlay() {
   isPlaying = !isPlaying;
   ppBtn.innerText = isPlaying ? '❚❚' : '▶';
-  if(isPlaying) { bgmPlayer.play(); startTimer(); }
-  else { bgmPlayer.pause(); clearInterval(timer); }
+  if (isPlaying) { 
+    bgmPlayer.play(); 
+    startTimer(); 
+  } else { 
+    bgmPlayer.pause(); 
+    clearInterval(timer); 
+  }
 }
 
 function startTimer() {
@@ -419,39 +469,49 @@ function startTimer() {
   timer = setInterval(next, 4000);
 }
 
-// === 4. 匯出邏輯 (將已讀取的 music.mp3 燒錄進去) ===
+// === 4. 匯出邏輯 (改進：雙重下載模式) ===
 function exportForParents() {
-  if(!photos.length) { alert("沒有照片可以匯出！"); return; }
-  
-  // 如果音樂還沒載入完成
-  if(!bgmBase64) {
-    if(!confirm("⚠️ 警告：目前沒有偵測到 music.mp3，匯出的檔案將沒有聲音。\n\n確定要繼續嗎？")) return;
+  if (!photos.length) {
+    alert("沒有照片可以匯出！");
+    return;
   }
-  
+
+  if (!bgmBase64) {
+    if (!confirm("⚠️ 警告：目前沒有偵測到 music.mp3，匯出的檔案將沒有聲音。\n\n確定要繼續嗎？")) return;
+  }
+
   exportBtn.innerText = "⏳ 打包中...";
   exportBtn.classList.add("loading");
   exportBtn.disabled = true;
 
-  // 使用 setTimeout 避免 UI 卡住
+  // 使用 setTimeout 讓畫面有機會更新
   setTimeout(() => {
-    const name = document.getElementById('fileName').value || 'ClassMemory.html';
-    const safeName = name.endsWith('.html') ? name : name + '.html';
+    // 檔名處理 (移除不安全字元)
+    const rawName = document.getElementById('fileName').value.trim() || 'ClassMemory';
+    const safeBase = rawName.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, "_") || "ClassMemory"; // 允許中文
+    const safeName = safeBase.endsWith(".html") ? safeBase : safeBase + ".html";
+
     const slidesData = JSON.stringify(getSlides());
-    const musicData = bgmBase64 || ""; // 如果沒有音樂就留空
-    
-    // 產生給家長的單一檔案
+    const musicData = bgmBase64 || "";
+
     const finalHtml = `<!DOCTYPE html>
 <html lang="zh-Hant">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeName}</title>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${safeName}</title>
 <style>
-body{margin:0;background:#000;height:100vh;overflow:hidden;font-family:sans-serif;display:flex;justify-content:center;align-items:center}
+body{margin:0;background:#000;height:100vh;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;display:flex;justify-content:center;align-items:center}
 img{max-width:100%;max-height:100%;object-fit:contain;transition:opacity .5s}
 .q{position:absolute;bottom:0;width:100%;padding:40px 20px 80px;background:linear-gradient(to top,#000000cc,transparent);text-align:center;display:none}
 .box{background:#00000099;padding:15px 30px;border-radius:15px;display:inline-block;backdrop-filter:blur(5px)}
 h1{color:#facc15;margin:0;font-size:24px;text-shadow:0 2px 4px #000}
 #btn{position:absolute;z-index:10;background:#3b82f6;color:#fff;border:none;padding:15px 40px;border-radius:50px;font-size:20px;cursor:pointer;box-shadow:0 4px 15px rgba(59,130,246,0.5)}
-</style></head>
+#hint{position:absolute;top:10px;left:0;right:0;color:#e5e7eb;font-size:13px;text-align:center;padding:0 16px;line-height:1.5;background:rgba(0,0,0,0.5);pointer-events:none;}
+</style>
+</head>
 <body>
+<div id="hint">📌 提示：如果按鈕沒反應，請點擊右上角選「以 Chrome/Safari 開啟」</div>
 <button id="btn" onclick="start()">▶ 開始播放回顧</button>
 <img id="img">
 <div id="q" class="q"><div class="box"><h1 id="qt"></h1></div></div>
@@ -459,47 +519,86 @@ h1{color:#facc15;margin:0;font-size:24px;text-shadow:0 2px 4px #000}
 const S=${slidesData};
 const M="${musicData}";
 let i=0,t;
-const a=new Audio(M);a.loop=true;
+const a = M ? new Audio(M) : null;
+if(a){a.loop=true;}
 const img=document.getElementById('img');
 const q=document.getElementById('q');
 const qt=document.getElementById('qt');
 const btn=document.getElementById('btn');
+const hint=document.getElementById('hint');
+
+setTimeout(()=>{if(hint)hint.style.display='none'}, 5000);
 
 function start(){
   btn.style.display='none';
-  if(M) a.play().catch(e=>console.log(e));
+  if(hint) hint.style.display='none';
+  if(a){ a.play().catch(e=>console.log(e)); }
   show();
   t=setInterval(next,4000);
 }
 function show(){
   const s=S[i];
   img.src=s.src;
-  if(s.txt){qt.innerText=s.txt;q.style.display='block'}else{q.style.display='none'}
+  if(s.txt){qt.innerText=s.txt;q.style.display='block';}
+  else{q.style.display='none';}
 }
 function next(){
-  if(i<S.length-1){i++;show()}
-  else{clearInterval(t);a.pause();btn.innerText='↺ 重看一次';btn.style.display='block';i=0;}
+  if(i<S.length-1){i++;show();}
+  else{
+    clearInterval(t);
+    if(a){a.pause();}
+    btn.innerText='↺ 重看一次';
+    btn.style.display='block';
+    i=0;
+  }
 }
-<\/script></body></html>`;
+<\/script>
+</body>
+</html>`;
 
-    const blob = new Blob([finalHtml], {type: 'text/html'});
+    // 1. 準備檔案
+    const blob = new Blob([finalHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = safeName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
     
-    // 恢復按鈕
+    // 2. 清空下載區，準備放入新按鈕
+    downloadArea.innerHTML = '';
+    
+    // 3. 嘗試自動下載 (僅電腦版有效)
+    const autoLink = document.createElement("a");
+    autoLink.href = url;
+    autoLink.download = safeName;
+    document.body.appendChild(autoLink);
+    autoLink.click();
+    document.body.removeChild(autoLink);
+
+    // 4. 【關鍵】建立手機專用手動按鈕
+    const manualBtn = document.createElement("a");
+    manualBtn.href = url;
+    manualBtn.download = safeName;
+    manualBtn.className = "btn btn-pink"; // 粉紅色顯眼按鈕
+    manualBtn.innerHTML = `📥 點此下載檔案：${safeName}`;
+    manualBtn.target = "_blank"; // 幫助手機觸發新視窗/下載
+
+    // 5. 加入教學文字
+    const mobileHint = document.createElement("div");
+    mobileHint.className = "mobile-hint";
+    mobileHint.innerHTML = `
+      <strong>📱 手機下載教學：</strong><br>
+      1. 點擊上方的<strong style="color:#ec4899">粉紅色按鈕</strong>。<br>
+      2. <strong>iPhone (Safari)</strong>：若出現預覽，請點下方「分享」<span style="font-size:16px">📤</span> →「儲存到檔案」。<br>
+      3. <strong>Android</strong>：通常會直接下載。<br>
+      4. <strong>LINE/FB 瀏覽器</strong>：若無法下載，請點右上角選單 →「使用 Chrome/Safari 開啟」。
+    `;
+
+    downloadArea.appendChild(manualBtn);
+    downloadArea.appendChild(mobileHint);
+
+    // 恢復按鈕狀態
     exportBtn.innerText = "💾 下載 (給家長)";
     exportBtn.classList.remove("loading");
     exportBtn.disabled = false;
-    
-    // 顯示提示
-    const area = document.getElementById('downloadArea');
-    area.innerHTML = `<p style="color:#4ade80">✅ 檔案已產生：${safeName} (音樂已內建)</p>`;
-  }, 100);
+
+  }, 500); 
 }
 </script>
 </body>
